@@ -1,0 +1,263 @@
+g++ -fopenmp parallel_graph_traversal.cpp -o graph
+
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <stack>
+#include <omp.h>
+#include <atomic>
+#include <chrono>
+
+using namespace std;
+
+class Graph {
+private:
+    int V;
+    vector<vector<int>> adj;
+
+public:
+    Graph(int vertices) : V(vertices) {
+        adj.resize(V);
+    }
+
+    void addEdge(int u, int v) {
+        adj[u].push_back(v);
+        adj[v].push_back(u); // Undirected
+    }
+
+    void parallelBFS(int start) {
+        vector<atomic<bool>> visited(V);
+        for (int i = 0; i < V; ++i) visited[i] = false;
+
+        queue<int> q;
+        q.push(start);
+        visited[start] = true;
+
+        cout << "Parallel BFS starting from vertex " << start << ": ";
+
+        while (!q.empty()) {
+            int levelSize = q.size();
+            vector<int> currentLevel;
+
+            // Collect current level nodes
+            for (int i = 0; i < levelSize; ++i) {
+                int node = q.front(); q.pop();
+                cout << node << " ";
+                currentLevel.push_back(node);
+            }
+
+            vector<int> nextLevel;
+#pragma omp parallel for
+            for (int i = 0; i < currentLevel.size(); ++i) {
+                int u = currentLevel[i];
+                for (int v : adj[u]) {
+                    if (!visited[v].exchange(true)) {
+#pragma omp critical
+                        q.push(v);
+                    }
+                }
+            }
+        }
+        cout << endl;
+    }
+
+    void parallelDFSUtil(int u, vector<atomic<bool>> &visited) {
+        visited[u] = true;
+        cout << u << " ";
+
+#pragma omp parallel
+        {
+#pragma omp single nowait
+            for (int v : adj[u]) {
+                if (!visited[v]) {
+#pragma omp task
+                    parallelDFSUtil(v, visited);
+                }
+            }
+        }
+    }
+
+    void parallelDFS(int start) {
+        vector<atomic<bool>> visited(V);
+        for (int i = 0; i < V; ++i) visited[i] = false;
+
+        cout << "Parallel DFS starting from vertex " << start << ": ";
+#pragma omp parallel
+        {
+#pragma omp single
+            parallelDFSUtil(start, visited);
+        }
+        cout << endl;
+    }
+};
+
+int main() {
+    Graph g(8);
+    g.addEdge(0, 1);
+    g.addEdge(0, 2);
+    g.addEdge(1, 3);
+    g.addEdge(1, 4);
+    g.addEdge(2, 5);
+    g.addEdge(2, 6);
+    g.addEdge(6, 7);
+
+    auto start = chrono::high_resolution_clock::now();
+    g.parallelBFS(0);
+    auto end = chrono::high_resolution_clock::now();
+    cout << "BFS Time: " << chrono::duration<double, milli>(end - start).count() << " ms\n";
+
+    start = chrono::high_resolution_clock::now();
+    g.parallelDFS(0);
+    end = chrono::high_resolution_clock::now();
+    cout << "DFS Time: " << chrono::duration<double, milli>(end - start).count() << " ms\n";
+
+    return 0;
+}
+
+
+
+
+
+
+Dynamic Code : 
+
+
+
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <stack>
+#include <omp.h>
+#include <atomic>
+
+using namespace std;
+
+class Graph {
+private:
+    int V;
+    vector<vector<int>> adj;
+
+public:
+    Graph(int vertices) : V(vertices) {
+        adj.resize(V);
+    }
+
+    void addEdge(int u, int v) {
+        adj[u].push_back(v);
+        adj[v].push_back(u); // Undirected
+    }
+
+    void parallelBFS(int start) {
+        vector<atomic<bool>> visited(V);
+        for (int i = 0; i < V; ++i) visited[i] = false;
+
+        queue<int> q;
+        q.push(start);
+        visited[start] = true;
+
+        cout << "\nParallel BFS starting from vertex " << start << ": ";
+
+        while (!q.empty()) {
+            int levelSize = q.size();
+            vector<int> currentLevel;
+
+            // Get all nodes of current level
+            for (int i = 0; i < levelSize; ++i) {
+                int node = q.front(); q.pop();
+                cout << node << " ";
+                currentLevel.push_back(node);
+            }
+
+#pragma omp parallel for
+            for (int i = 0; i < currentLevel.size(); ++i) {
+                int u = currentLevel[i];
+                for (int v : adj[u]) {
+                    if (!visited[v].exchange(true)) {
+#pragma omp critical
+                        q.push(v);
+                    }
+                }
+            }
+        }
+        cout << endl;
+    }
+
+    void parallelDFSUtil(int u, vector<atomic<bool>> &visited) {
+        visited[u] = true;
+        cout << u << " ";
+
+#pragma omp parallel
+        {
+#pragma omp single nowait
+            for (int v : adj[u]) {
+                if (!visited[v]) {
+#pragma omp task
+                    parallelDFSUtil(v, visited);
+                }
+            }
+        }
+    }
+
+    void parallelDFS(int start) {
+        vector<atomic<bool>> visited(V);
+        for (int i = 0; i < V; ++i) visited[i] = false;
+
+        cout << "\nParallel DFS starting from vertex " << start << ": ";
+
+#pragma omp parallel
+        {
+#pragma omp single
+            parallelDFSUtil(start, visited);
+        }
+
+        cout << endl;
+    }
+};
+
+int main() {
+    int vertices, edges;
+    cout << "Enter number of vertices: ";
+    cin >> vertices;
+
+    cout << "Enter number of edges: ";
+    cin >> edges;
+
+    Graph g(vertices);
+
+    cout << "Enter edges (u v):\n";
+    for (int i = 0; i < edges; ++i) {
+        int u, v;
+        cin >> u >> v;
+        g.addEdge(u, v);
+    }
+
+    int startNode;
+    cout << "Enter starting vertex for BFS/DFS: ";
+    cin >> startNode;
+
+    g.parallelBFS(startNode);
+    g.parallelDFS(startNode);
+
+    return 0;
+}
+
+
+Enter number of vertices: 6
+Enter number of edges: 7
+Enter edges (u v):
+0 1
+0 2
+1 3
+1 4
+2 4
+3 5
+4 5
+Enter starting vertex for BFS/DFS: 0
+
+Compile and run : 
+
+g++ -fopenmp parallel_graph_dynamic.cpp -o parallel_graph
+./parallel_graph
+
+
+
